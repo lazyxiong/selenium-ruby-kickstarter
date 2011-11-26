@@ -1,0 +1,137 @@
+<!--
+    Copyright (C) 2010 Alexandre Berman, Lazybear Consulting (sashka@lazybear.net)
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    usage: ant help
+-->
+
+<project name="QA" basedir=".">
+
+   <!-- REPORTS -->
+   <!-- you can pass '-Dqa.reports=/some/path' to ant and it will be used for qa.reports -->
+   <condition property="runtime.report" value="" else="${qa.reports}">
+      <not>
+         <isset property="qa.reports"/>
+      </not>
+   </condition>
+   <!-- check if qa.report is set to any value or is empty -->
+   <condition property="session.reports" value="" else="REPORTS_DIR=${runtime.report}">
+      <equals arg1="${runtime.report}" arg2=""/>
+   </condition>
+
+   <!-- KEYWORDS -->
+   <!-- check if qa.keywords is set to anything sensible (usually via command line option -Dqa.keywords='...' -->
+   <condition property="runtime.keyword" value="" else="${qa.keywords}">
+      <not>
+         <isset property="qa.keywords"/>
+      </not>
+   </condition>
+
+   <!-- check if runtime.keyword is set to any value or is empty -->
+   <condition property="session.keywords" value="" else="KEYWORDS='${runtime.keyword}'">
+      <equals arg1="${runtime.keyword}" arg2=""/>
+   </condition>
+
+   <!-- RAKE -->
+   <condition property="rake.path" value="rake">
+      <os family="unix" />
+   </condition>
+
+   <condition property="rake.path" value="${ruby.home}\bin\rake.bat">
+      <os family="windows" />
+   </condition>
+
+   <!-- test.base.url -->
+   <condition property="qa.base.url" value="" else="${test.base.url}">
+      <not>
+         <isset property="test.base.url"/>
+      </not>
+   </condition>
+
+   <echo message="qa.reports       : ${runtime.report}"/>
+   <echo message="session.keywords : ${runtime.keyword}"/>
+   <echo message="qa.base.url      : ${qa.base.url}"/>
+
+   <macrodef name="check-connection">
+        <sequential>
+           <exec executable="ruby" failonerror="true">
+ 	      <arg line="${basedir}/lib/check_connection.rb ${qa.base.url}"/>
+           </exec>
+        </sequential>
+   </macrodef>
+
+   <macrodef name="run-rc">
+        <attribute name="option"/>
+        <sequential>
+           <exec executable="ruby" spawn="true">
+	      <arg line="${basedir}/lib/rc.rb @{option}"/>
+	      <env key="JAVA_HOME" value="${java.home}"/>
+           </exec>
+        </sequential>
+   </macrodef>
+
+   <macrodef name="run-qa">
+        <sequential>
+	    <run-rc option="start"/>
+	    <echo message="-- executing: ${rake.path} ${session.keywords} ${session.reports}"/>
+	    <exec executable="${rake.path}" resultproperty="test.run">
+	       <env key="qa.base.url" value="${qa.base.url}"/>
+	       <arg line="${session.keywords} ${session.reports}"/>
+            </exec>
+	    <echo message="-- qa.base.url set to: ${qa.base.url}"/>
+	    <echo message="-- reports set to    : ${runtime.report}"/>
+	    <echo message="-- keyword set to    : ${runtime.keyword}"/>
+            <echo message="-- executing QA tests ..."/>
+	    <run-rc option="stop"/>
+        </sequential>
+   </macrodef>
+
+   <macrodef name="finally">
+        <sequential>
+            <echo message="-- test.run result: ${test.run}"/>
+            <fail message="some tests failed !">
+               <condition>
+                  <not>
+                     <equals arg1="${test.run}" arg2="0"/>
+                  </not>
+               </condition>
+            </fail>
+        </sequential>
+   </macrodef>
+
+   <target name="start-rc">
+	<run-rc option="start"/>
+   </target>
+
+   <target name="stop-rc">
+	<run-rc option="stop"/>
+   </target>
+
+   <target name="ci">
+  	<check-connection />
+        <run-qa/>
+        <finally/>
+   </target>
+
+   <target name="help">
+        <echo message="-- available targets: ci, start-rc, stop-rc, help (this message)..."/>
+	<echo message="   you can pass '-Dqa.keywords=somekeyword' to ant and corresponding tests will execute"/>
+	<echo message="   you can pass '-Dqa.reports=/path/to/reports' to ant and reports will be prepared in that dir"/>
+	<echo message="   you can pass '-Dtest.base.url=http://server_under_test_url' to ant and it will be used as a server test url"/>
+   </target>
+  
+</project>

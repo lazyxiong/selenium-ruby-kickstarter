@@ -1,0 +1,18 @@
+# -- usage: rake help
+require 'rake/rdoctask'
+
+task :default => [:rerdoc_qa]
+
+# -- usage
+desc "-- usage"
+task :help do
+    puts "\n-- usage: \n\n"
+    puts "   rake help                                     : print this message"
+    puts "   rake                                          : this will by default run :rerdoc_qa task, which generates rdocs"
+    puts "\n\n   Note: rdoc is generated for the following files only: lib/ruby_suite.rb, lib/base_test.rb\n\n"
+end
+
+Rake::RDocTask.new(:rdoc_qa) do |rd|
+    rd.rdoc_files.include("../lib/ruby_suite.rb", "../lib/base_test.rb")
+    rd.options << "--all"
+end
