@@ -91,8 +91,9 @@ class RubySuite
       end
       begin
          p("-- SUCCESS : Selenium RC is alive !\n")
-         p("-- ENV : " + RUBY_PLATFORM)
-         p("-- BROWSER : " + @browser)
+         p("-- ENV          : " + RUBY_PLATFORM)
+	 p("-- Selenium Host: " + @host)
+         p("-- BROWSER      : " + @browser)
          @selenium = Selenium::Client::Driver.new \
            :host => @host,
            :port => @port,
@@ -214,6 +215,14 @@ class RubySuite
    def select(element, option)
       p("-- selecting option ['#{option}'] from select element ['#{element}']")
       @selenium.select(element, option)
+   end
+
+   # -- get_eval
+      def get_eval(eval_expression)
+      p("-- evaluating expression: " + eval_expression)
+      e = @selenium.get_eval(eval_expression)
+      p("-- expression evaluated to: " + e)
+      return e
    end
 
    # -- check something
