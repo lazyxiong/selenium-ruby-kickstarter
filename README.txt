@@ -1,14 +1,20 @@
-Requirements to run automated tests: 
+Requirements to run automated tests:
 ----------------
 
 -Java 1.5+
-
 -Ant  1.6+
-
 -Ruby 1.8.6
+-Ruby gems
 
-Running tests:
-----------------
+
+Automated env setup:
+--------------------
+
+Use bundler:
+
+1. sudo gem install bundler
+2. sudo bundle install
+
 
 1. running single test at a time
 
