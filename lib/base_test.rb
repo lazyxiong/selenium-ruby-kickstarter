@@ -30,18 +30,18 @@ class BaseTest
           @suite.p "FAILED: "
           @suite.p e.inspect
           @suite.p e.backtrace
-          save_screenshot
+          save_screenshot if ENV['REPORTS_DIR']
        ensure
           teardown
           @suite.clean_exit(@passed)
        end
     end
 
-    def save_screenshot filename=nil
+    def save_screenshot
       @suite.p "CAPTURE SCREENSHOT"
       begin
         screenshot_flag = true
-        filename = (ENV['REPORT_FILE'] + '.png') unless filename
+	filename = (ENV['REPORTS_DIR'] + "/" + self.class.name + '.png')
         screenshot = @suite.selenium.capture_screenshot_to_string()
         tmp_file = File.open(filename,'w')
         tmp_file.puts(Base64.decode64(screenshot))

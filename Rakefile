@@ -19,6 +19,8 @@
 
 require 'net/pop'
 require 'net/smtp'
+require 'net/http'
+require 'uri'
 require 'tlsmail'
 require "timeout"
 require "fileutils"
@@ -34,6 +36,7 @@ task :default => [:run]
 @executed_tests        = 0
 @reports_dir           = ENV['HOME'] + "/rake_reports" # -- default
 @reports_dir           = ENV['REPORTS_DIR'] if ENV['REPORTS_DIR'] != nil
+ENV["REPORTS_DIR"]     = @reports_dir
 #
 # -- the following vars control the behavior of running tests: default values
 @test_data = {
@@ -48,6 +51,7 @@ task :default => [:run]
    'test_extension'            => ".rb",
    'excludes'                  => ".svn",
    'test_dir'                  => "tests",
+   'test_timeout'              => 1200, # -- miliseconds
    # -- mail related vars
    'pop_host'                  => "pop.gmail.com",
    'pop_port'                  => 995,
@@ -56,7 +60,11 @@ task :default => [:run]
    'mail_domain'               => "gmail.com",
    'user_name'                 => "",
    'user_passwd'               => "",
-   'reply_email'               => ""
+   'reply_email'               => "",
+   'use_jenkins'               => false,
+   'jenkins_job_url'           => "",
+   'jenkins_job_parameter'     => "",
+   'two_step_authentication'   => false
 }
 
 #    *************************** BEGIN SETUP ***************************
@@ -205,6 +213,8 @@ task :find_all do
    filter_by_keywords
 end
 
+# -- BEGIN EMAIL GATEWAY RELATED CODE
+
 # -- do_reply
 def do_reply(subject, msg)
    full_msg=<<END_OF_MESSAGE
@@ -221,6 +231,43 @@ END_OF_MESSAGE
    }
 end
 
+# -- play received request
+def play_request(keyword)
+   # -- we either execute program marked by received keyword directly, or trigger Jenkins build
+   if @test_data['use_jenkins']
+      url = @test_data['jenkins_job_url'] + @test_data['jenkins_job_parameter'] + "=" + keyword
+      Net::HTTP.get(URI.parse("#{url}"))
+      xxx = "-- Jenkins job was invoked with supplied parameter: " + keyword + "\n\n-- url: " + url
+      do_reply("-- Jenkins job invoked", xxx)
+   else
+      xxx  = "-- executing: rake KEYWORDS='" + keyword + "'\n\n"
+      xxx += `rake KEYWORDS='#{keyword}'`
+      do_reply("-- status of playback delivered", xxx)
+   end
+end
+
+# -- two_step_authenticate: send random number to reply_to email
+def authentication_send_code(keyword)
+   # -- first: save received keyword with the code for later matching
+   code = rand(50000).to_s
+   file = @suite_root + "/" + code + ".au"
+   File.open(file, "w") { |f| f.write(keyword) }
+   # -- then: send random code for authentication
+   do_reply("-- authenticate yourself by replying to this email", "==authentication: #{code}==")
+end
+
+# -- two_step_authenticate: process received code and match with what was sent
+def authentication_process_code(code)
+   # -- match received code against a file with same name: its content should be the keyword to play
+   #    if file doesn't exist, then we just ignore the whole thing - that means authentication failed !
+   file    = @suite_root + "/" + code + ".au"
+   if File.exist?(file)
+      keyword = File.open(file, 'r') { |f| f.read }
+      File.delete(file)
+      play_request(keyword)
+   end
+end
+
 # -- pop mail
 def pop_mail
    Net::POP3.enable_ssl(OpenSSL::SSL::VERIFY_NONE)
@@ -231,10 +278,12 @@ def pop_mail
          pop.each_mail do |m|
             puts("-- >>> processing new message ...")
 	    msg = m.pop
+	    # -- is the message one that we expect and know how to handle ?
             if !/==.*==/.match(msg)
                do_reply("-- ERROR: wrong argument supplied !", mail_help)
 	    else
-	       msg = /^.*(==.*==).*$/.match(msg)[0].gsub(/==/, '').strip
+	       # -- ok, this message is for us
+	       msg = /^(.*)(==.*==).*$/.match(msg)[2].gsub(/==/, '').strip
 	       case msg
                   when /help/
                      do_reply("-- Help on using mail interface delivered !", mail_help)
@@ -243,9 +292,15 @@ def pop_mail
                      do_reply("-- list of objects delivered !", xxx)
                   when /play\s+.*$/
 	             keyword = msg.gsub(/play/, '').strip
-                     xxx  = "-- executing: rake KEYWORD='" + keyword + "'\n\n"
-		     xxx += `rake KEYWORD='#{keyword}'`
-                     do_reply("-- status of playback delivered", xxx)
+		     # -- do we have two-step-authentication enabled ?
+		     if @test_data['two_step_authentication']
+		        authentication_send_code(keyword)
+		     else
+		        play_request(keyword)
+	             end
+                  when /authentication:\s+.*$/
+	             code = msg.gsub(/authentication:/, '').strip
+		     authentication_process_code(code)
 	       end
 	    end
             m.delete
@@ -260,6 +315,8 @@ desc "-- start mail gateway..."
 task :mail_gateway do
    pop_mail
 end
+
+# -- END EMAIL GATEWAY RELATED CODE
 
 # -- print tests
 desc "-- print tests..."
@@ -417,7 +474,7 @@ class Test
        @exit_status    = @output = @path = @execute_class = @execute_args = @keywords = @description = @author = ""
        @test_data      = test_data
        @execution_time = 0.0
-       @timeout        = 1200 # miliseconds
+       @timeout        = @test_data['test_timeout']
        @path           = hash['path']
        @execute_class  = hash['execute_class']
        @execute_args   = hash['execute_args']
@@ -456,7 +513,6 @@ class Test
 
     def run
        @cmd = @cmd + " " + @execute_args unless @execute_args == ""
-       ENV["REPORT_FILE"] = File.join(@test_data['reports_dir'], @execute_class)
        tStart = Time.now
        print("-- #{tStart.strftime('[%H:%M:%S]')} running: [#{@cmd}] ")
        begin
