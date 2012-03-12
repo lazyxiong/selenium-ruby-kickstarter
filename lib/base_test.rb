@@ -10,14 +10,14 @@
 #    but WITHOUT ANY WARRANTY; without even the implied warranty of
 #    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #    GNU General Public License for more details.
-require 'base64'
 require 'lib/ruby_suite'
 
 class BaseTest
-    attr_accessor :suite, :passed
+    attr_accessor :suite, :passed, :keyword
     def initialize
-       @suite  = RubySuite.new(:test_name => self.class.name)
-       @passed = false
+       @suite   = RubySuite.new(:test_name => self.class.name)
+       @passed  = false
+       @keyword = get_keyword
     end
 
     # -- test begins
@@ -37,22 +37,15 @@ class BaseTest
        end
     end
 
+    # -- save screenshots to REPORTS_DIR
     def save_screenshot
-      @suite.p "CAPTURE SCREENSHOT"
+      @suite.p "-- CAPTURE SCREENSHOT ::"
       begin
         screenshot_flag = true
-	filename = (ENV['REPORTS_DIR'] + "/" + self.class.name + '.png')
-        screenshot = @suite.selenium.capture_screenshot_to_string()
-        tmp_file = File.open(filename,'w')
-        tmp_file.puts(Base64.decode64(screenshot))
-        tmp_file.close()
-        @suite.p "SCREENSHOT CAPTURED TO #{filename}"
+        filename = (ENV['REPORTS_DIR'] + "/" + self.class.name + '.png')
+        @suite.capture_screenshot(filename)
+        @suite.p "-- SCREENSHOT CAPTURED TO: {#{filename}}"
         screenshot_flag = false
-        screenshot = @suite.selenium.capture_entire_page_screenshot_to_string()
-        tmp_file = File.open(filename,'w')
-        tmp_file.puts(Base64.decode64(screenshot))
-        tmp_file.close()
-        @suite.p "ENTIRE SCREENSHOT CAPTURED TO #{filename}"
      rescue => e
         if screenshot_flag
            @suite.p "FAILED TO CAPTURE SCREENSHOT: "
@@ -60,6 +53,14 @@ class BaseTest
            @suite.p e.backtrace
         end
       end
+    end
+
+    # -- figure out keyword of running test
+    def get_keyword
+       Dir.glob("#{@suite.suite_root}/tests/**/*_test.rb") {|f|
+          file_contents = File.read(f)
+          return /^#.*@keywords(.*$)/.match(file_contents)[0].gsub(/^#.*@keywords/, '').strip if /#{self.class.name}/.match(file_contents)
+       }
     end
 
     # -- this method is overriden in subclass
@@ -72,7 +73,7 @@ class BaseTest
        # -- let's print the description of each test first:
        Dir.glob("#{@suite.suite_root}/tests/**/*_test.rb") {|f|
           file_contents = File.read(f)
-          @suite.p "\n   [description] : " + /^#.*@description(.*$)/.match(file_contents)[0].gsub(/^#.*@description/, '') + "\n" if /#{self.class.name}/.match(file_contents)
+          @suite.p "\n   [description] : " + /^#.*@description(.*$)/.match(file_contents)[0].gsub(/^#.*@description/, '') + "\n\n" if /#{self.class.name}/.match(file_contents)
        }
     end
 
